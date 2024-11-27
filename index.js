@@ -59,34 +59,16 @@ async function getFeedPosts(cursor) {
 
     let allPosts = []
     
-    // Search terms to try, ordered by priority
+    // Simple search terms that are more likely to return results
     const searchTerms = [
-      // Primary health terms
-      'gay health',
-      'lgbtq health',
-      'queer health',
-      'gay mental health',
-      
-      // Sexual health
-      'prep hiv',
-      'sexual health gay',
-      'sti prevention',
-      'hiv prevention',
-      
-      // Mental health
-      'gay therapy',
-      'lgbtq counseling',
-      'queer mental health',
-      
-      // Physical health
-      'gay fitness',
-      'gay wellness',
-      'gay nutrition',
-      
-      // Healthcare access
-      'lgbtq healthcare',
-      'gay doctor',
-      'queer medical'
+      'health',
+      'wellness',
+      'medical',
+      'healthcare',
+      'prep',
+      'hiv',
+      'therapy',
+      'fitness'
     ]
 
     // Try each search term
@@ -95,59 +77,41 @@ async function getFeedPosts(cursor) {
         console.log(`Searching for term: "${term}"`)
         const response = await agent.searchPosts({
           q: term,
-          limit: 25
+          limit: 20
         })
         
         if (response?.data?.posts) {
-          // Filter out retweets and ensure post has text
-          const validPosts = response.data.posts.filter(post => 
-            post?.record?.text && 
-            !post.record.text.startsWith('RT ') &&
-            !post.record.text.startsWith('rt ')
-          )
+          // Only keep posts that mention LGBTQ+ topics
+          const relevantPosts = response.data.posts.filter(post => {
+            if (!post?.record?.text) return false
+            const text = post.record.text.toLowerCase()
+            return (
+              text.includes('gay') ||
+              text.includes('lgbtq') ||
+              text.includes('queer') ||
+              text.includes('lgbt')
+            )
+          })
           
-          console.log(`Found ${validPosts.length} valid posts for term "${term}"`)
-          allPosts = [...allPosts, ...validPosts]
+          if (relevantPosts.length > 0) {
+            console.log(`Found ${relevantPosts.length} relevant posts for "${term}"`)
+            allPosts = [...allPosts, ...relevantPosts]
+          }
         }
       } catch (error) {
         console.error(`Error searching for term "${term}":`, error.message)
+        // If we hit rate limits, wait longer before continuing
+        if (error.message?.includes('rate limit')) {
+          console.log('Rate limit hit, waiting 2 seconds...')
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        }
       }
       
-      // Small delay between searches
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Delay between searches
+      await new Promise(resolve => setTimeout(resolve, 1000))
     }
     
-    console.log(`Total posts gathered from searches: ${allPosts.length}`)
-
-    // Get some posts from the timeline as well
-    try {
-      const timelineResponse = await agent.getTimeline({ limit: 50 })
-      if (timelineResponse?.data?.feed) {
-        const timelinePosts = timelineResponse.data.feed
-          .filter(item => {
-            const text = item.post?.record?.text?.toLowerCase() || ''
-            return (
-              text.includes('health') || 
-              text.includes('wellness') || 
-              text.includes('medical') || 
-              text.includes('prep') || 
-              text.includes('hiv')
-            ) && (
-              text.includes('gay') || 
-              text.includes('lgbtq') || 
-              text.includes('queer')
-            )
-          })
-          .map(item => item.post)
-        
-        console.log(`Got ${timelinePosts.length} relevant posts from timeline`)
-        allPosts = [...allPosts, ...timelinePosts]
-      }
-    } catch (error) {
-      console.error('Error fetching timeline:', error.message)
-    }
-
-    console.log(`Total posts after adding timeline: ${allPosts.length}`)
+    console.log(`Total posts gathered: ${allPosts.length}`)
 
     // Remove duplicates and sort by recency
     const uniquePosts = new Map()
@@ -160,8 +124,6 @@ async function getFeedPosts(cursor) {
       }
     }
     
-    console.log(`Number of unique posts: ${uniquePosts.size}`)
-
     // Convert to array and sort by indexedAt
     const feedPosts = Array.from(uniquePosts.values())
       .sort((a, b) => new Date(b.indexedAt) - new Date(a.indexedAt))
@@ -169,17 +131,26 @@ async function getFeedPosts(cursor) {
 
     console.log(`Final number of feed posts: ${feedPosts.length}`)
 
-    // Log some sample posts for debugging
-    const samplePosts = feedPosts.slice(0, 3)
-    console.log('Sample posts:', JSON.stringify(samplePosts, null, 2))
+    // Always include the announcement post at the top
+    const announcementPost = "at://did:plc:aotppcypi2e6pse2g7wprang/app.bsky.feed.post/3lbvr6geyvc2s"
+    const finalFeed = [
+      { post: announcementPost },
+      ...feedPosts.filter(p => p.post !== announcementPost)
+    ]
 
     return {
       cursor: cursor || new Date().toISOString(),
-      feed: feedPosts
+      feed: finalFeed
     }
   } catch (error) {
     console.error('Error in getFeedPosts:', error)
-    throw error
+    // On error, at least return the announcement post
+    return {
+      cursor: cursor || new Date().toISOString(),
+      feed: [{
+        post: "at://did:plc:aotppcypi2e6pse2g7wprang/app.bsky.feed.post/3lbvr6geyvc2s"
+      }]
+    }
   }
 }
 
