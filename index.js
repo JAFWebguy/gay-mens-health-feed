@@ -45,97 +45,72 @@ const agent = new BskyAgent({
   service: 'https://bsky.social'
 })
 
+// Cache to store relevant posts
+let postCache = new Map()
+const MAX_CACHE_SIZE = 1000
+
+// Function to check if a post is relevant to gay men's health
+function isRelevantPost(text) {
+  if (!text) return false
+  text = text.toLowerCase()
+  
+  // Health-related terms
+  const healthTerms = ['health', 'wellness', 'medical', 'healthcare', 'prep', 'hiv', 
+                      'therapy', 'fitness', 'mental', 'doctor', 'clinic']
+  
+  // LGBTQ+ terms
+  const lgbtqTerms = ['gay', 'lgbtq', 'queer', 'lgbt']
+  
+  // Check if post contains at least one term from each category
+  const hasHealthTerm = healthTerms.some(term => text.includes(term))
+  const hasLGBTQTerm = lgbtqTerms.some(term => text.includes(term))
+  
+  return hasHealthTerm && hasLGBTQTerm
+}
+
+// Function to add a post to cache
+function addToCache(post) {
+  if (postCache.size >= MAX_CACHE_SIZE) {
+    // Remove oldest posts if cache is full
+    const oldestKey = Array.from(postCache.keys())[0]
+    postCache.delete(oldestKey)
+  }
+  postCache.set(post.uri, {
+    uri: post.uri,
+    indexedAt: post.indexedAt || new Date().toISOString()
+  })
+}
+
 async function getFeedPosts(cursor) {
   try {
-    console.log('Starting getFeedPosts with cursor:', cursor)
-    
     // Login to Bluesky
-    console.log('Attempting to login to Bluesky...')
     await agent.login({
       identifier: process.env.BLUESKY_USERNAME,
       password: process.env.BLUESKY_PASSWORD
     })
-    console.log('Successfully logged in to Bluesky')
 
-    let allPosts = []
+    // Get timeline posts
+    const response = await agent.getTimeline({ limit: 100 })
     
-    // Simple search terms that are more likely to return results
-    const searchTerms = [
-      'health',
-      'wellness',
-      'medical',
-      'healthcare',
-      'prep',
-      'hiv',
-      'therapy',
-      'fitness'
-    ]
-
-    // Try each search term
-    for (const term of searchTerms) {
-      try {
-        console.log(`Searching for term: "${term}"`)
-        const response = await agent.searchPosts({
-          q: term,
-          limit: 20
-        })
-        
-        if (response?.data?.posts) {
-          // Only keep posts that mention LGBTQ+ topics
-          const relevantPosts = response.data.posts.filter(post => {
-            if (!post?.record?.text) return false
-            const text = post.record.text.toLowerCase()
-            return (
-              text.includes('gay') ||
-              text.includes('lgbtq') ||
-              text.includes('queer') ||
-              text.includes('lgbt')
-            )
-          })
-          
-          if (relevantPosts.length > 0) {
-            console.log(`Found ${relevantPosts.length} relevant posts for "${term}"`)
-            allPosts = [...allPosts, ...relevantPosts]
-          }
+    if (response?.data?.feed) {
+      // Process each post
+      response.data.feed.forEach(item => {
+        if (item.post?.record?.text && isRelevantPost(item.post.record.text)) {
+          addToCache(item.post)
         }
-      } catch (error) {
-        console.error(`Error searching for term "${term}":`, error.message)
-        // If we hit rate limits, wait longer before continuing
-        if (error.message?.includes('rate limit')) {
-          console.log('Rate limit hit, waiting 2 seconds...')
-          await new Promise(resolve => setTimeout(resolve, 2000))
-        }
-      }
-      
-      // Delay between searches
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      })
     }
-    
-    console.log(`Total posts gathered: ${allPosts.length}`)
 
-    // Remove duplicates and sort by recency
-    const uniquePosts = new Map()
-    for (const post of allPosts) {
-      if (post?.uri && post?.indexedAt) {
-        uniquePosts.set(post.uri, {
-          post: post.uri,
-          indexedAt: post.indexedAt
-        })
-      }
-    }
-    
-    // Convert to array and sort by indexedAt
-    const feedPosts = Array.from(uniquePosts.values())
+    // Convert cache to sorted array
+    const posts = Array.from(postCache.values())
       .sort((a, b) => new Date(b.indexedAt) - new Date(a.indexedAt))
-      .map(({ post }) => ({ post }))
+      .map(({ uri }) => ({ post: uri }))
 
-    console.log(`Final number of feed posts: ${feedPosts.length}`)
-
-    // Always include the announcement post at the top
+    // Always include announcement post at the top
     const announcementPost = "at://did:plc:aotppcypi2e6pse2g7wprang/app.bsky.feed.post/3lbvr6geyvc2s"
     const finalFeed = [
       { post: announcementPost },
-      ...feedPosts.filter(p => p.post !== announcementPost)
+      ...posts.filter(p => p.post !== announcementPost)
     ]
 
     return {
@@ -144,7 +119,6 @@ async function getFeedPosts(cursor) {
     }
   } catch (error) {
     console.error('Error in getFeedPosts:', error)
-    // On error, at least return the announcement post
     return {
       cursor: cursor || new Date().toISOString(),
       feed: [{
