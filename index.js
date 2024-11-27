@@ -7,6 +7,13 @@ dotenv.config()
 const app = express()
 const port = process.env.PORT || 3000
 
+// Enable CORS
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*')
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
+  next()
+})
+
 // Initialize Bluesky agent
 const agent = new BskyAgent({
   service: 'https://bsky.social'
@@ -57,8 +64,21 @@ async function getFeedPosts(cursor) {
   }
 }
 
+// Well-known DID endpoint
+app.get('/.well-known/did.json', (req, res) => {
+  res.json({
+    "@context": ["https://www.w3.org/ns/did/v1"],
+    "id": "did:web:gay-mens-health-feed-bsky.herokuapp.com",
+    "service": [{
+      "id": "#bsky_fg",
+      "type": "BskyFeedGenerator",
+      "serviceEndpoint": "https://gay-mens-health-feed-bsky.herokuapp.com"
+    }]
+  })
+})
+
 // Feed endpoint
-app.get('/', async (req, res) => {
+app.get('/xrpc/app.bsky.feed.getFeedSkeleton', async (req, res) => {
   try {
     const cursor = req.query.cursor
     const feed = await getFeedPosts(cursor)
@@ -68,13 +88,15 @@ app.get('/', async (req, res) => {
   }
 })
 
-// Add description endpoint
-app.get('/description', (req, res) => {
+// Description endpoint
+app.get('/xrpc/app.bsky.feed.describeFeedGenerator', (req, res) => {
   res.json({
     did: 'did:web:gay-mens-health-feed-bsky.herokuapp.com',
-    displayName: "Gay Men's Health",
-    description: "A feed focused on gay men's health topics, including physical health, mental wellness, sexual health, and preventive care.",
-    avatar: 'https://example.com/avatar.jpg'
+    feeds: [{
+      uri: 'at://did:web:gay-mens-health-feed-bsky.herokuapp.com/app.bsky.feed.generator/gay-mens-health',
+      displayName: "Gay Men's Health",
+      description: "A feed focused on gay men's health topics, including physical health, mental wellness, sexual health, and preventive care."
+    }]
   })
 })
 
