@@ -7,11 +7,13 @@ dotenv.config()
 
 const app = express()
 const port = process.env.PORT || 3000
+const host = '0.0.0.0'
 
 // Print all environment variables (excluding sensitive data)
-console.log('Available environment variables:', {
+console.log('Starting server with configuration:', {
   NODE_ENV: process.env.NODE_ENV,
-  PORT: process.env.PORT,
+  PORT: port,
+  HOST: host,
   BLUESKY_USERNAME: process.env.BLUESKY_USERNAME ? '(set)' : '(not set)',
   BLUESKY_PASSWORD: process.env.BLUESKY_PASSWORD ? '(set)' : '(not set)',
 })
@@ -95,6 +97,7 @@ async function getFeedPosts(cursor) {
 
 // Basic health check endpoint
 app.get('/', (req, res) => {
+  console.log('Health check request received')
   res.json({
     status: 'ok',
     message: 'Gay Men\'s Health Feed Generator is running',
@@ -152,6 +155,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error', details: err.message })
 })
 
-app.listen(port, () => {
-  console.log(`Gay men's health feed server running on port ${port}`)
+// Start the server
+app.listen(port, host, () => {
+  console.log(`Gay men's health feed server running at http://${host}:${port}`)
 })
