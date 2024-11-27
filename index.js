@@ -47,17 +47,59 @@ const agent = new BskyAgent({
 
 // Define health-related keywords and topics
 const healthTopics = [
+  // General Health Terms
   'mens health',
+  'gay health',
+  'lgbtq health',
+  'queer health',
+  'healthcare',
+  'wellness',
+  
+  // Sexual Health
   'sexual health',
-  'mental health',
+  'sti prevention',
+  'std prevention',
   'prep',
   'hiv prevention',
-  'wellness',
-  'healthcare',
+  'hiv',
+  'aids',
+  'sexual wellness',
+  'safe sex',
+  'mpox',
+  'monkeypox',
+  
+  // Mental Health
+  'mental health',
+  'therapy',
+  'counseling',
+  'depression',
+  'anxiety',
+  'mental wellness',
+  'self care',
+  'support group',
+  
+  // Physical Health
   'fitness',
   'nutrition',
-  'mental wellness',
-  'preventive care'
+  'exercise',
+  'workout',
+  'gym',
+  'physical health',
+  
+  // Preventive Care
+  'preventive care',
+  'screening',
+  'checkup',
+  'vaccination',
+  'prevention',
+  
+  // Healthcare Access
+  'healthcare access',
+  'health insurance',
+  'clinic',
+  'doctor',
+  'physician',
+  'medical'
 ]
 
 async function getFeedPosts(cursor) {
@@ -69,28 +111,31 @@ async function getFeedPosts(cursor) {
     })
     console.log('Successfully logged in to Bluesky')
 
-    const limit = 100  // Increased limit to get more posts
+    const limit = 100
     console.log('Fetching timeline with cursor:', cursor)
     
-    // Use getAuthorFeed to get posts from specific health-focused accounts
+    // Define relevant health-focused accounts
     const healthAccounts = [
       'cdc.bsky.social',
       'who.bsky.social',
       'health.bsky.social',
       'healthcare.bsky.social',
-      'wellness.bsky.social'
+      'wellness.bsky.social',
+      'lgbtq.bsky.social',
+      'pride.bsky.social',
+      'gaymens.bsky.social'
     ]
     
     let allPosts = []
     
-    // First get posts from the general timeline
+    // Get posts from the general timeline
     const timelineResponse = await agent.getTimeline({ limit, cursor })
     allPosts = [...timelineResponse.data.feed]
     
-    // Then try to get posts from health-focused accounts
+    // Get posts from health-focused accounts
     for (const account of healthAccounts) {
       try {
-        const response = await agent.getAuthorFeed({ actor: account, limit: 20 })
+        const response = await agent.getAuthorFeed({ actor: account, limit: 30 })
         if (response.data.feed) {
           allPosts = [...allPosts, ...response.data.feed]
         }
@@ -99,29 +144,55 @@ async function getFeedPosts(cursor) {
       }
     }
     
+    // Search for health-related hashtags
+    const healthHashtags = ['health', 'wellness', 'lgbtqhealth', 'gayhealth', 'menshealth', 'prep', 'hivprevention']
+    for (const hashtag of healthHashtags) {
+      try {
+        const response = await agent.searchPosts({ q: '#' + hashtag, limit: 20 })
+        if (response.data.posts) {
+          allPosts = [...allPosts, ...response.data.posts.map(post => ({ post }))]
+        }
+      } catch (error) {
+        console.log(`Could not search for hashtag ${hashtag}:`, error.message)
+      }
+    }
+    
     console.log(`Retrieved ${allPosts.length} total posts`)
     
     // Filter posts containing health-related content
     const filteredFeed = allPosts
       .filter(item => {
+        if (!item.post?.record?.text) return false
         const postText = item.post.record.text.toLowerCase()
-        return healthTopics.some(topic => postText.includes(topic.toLowerCase())) ||
-               postText.includes('health') ||
-               postText.includes('wellness') ||
-               postText.includes('medical') ||
-               postText.includes('doctor') ||
-               postText.includes('therapy') ||
-               postText.includes('mental') ||
-               postText.includes('fitness')
+        
+        // Check for health topics
+        const hasHealthTopic = healthTopics.some(topic => postText.includes(topic.toLowerCase()))
+        
+        // Check for LGBTQ+ context
+        const hasLGBTQContext = postText.includes('gay') || 
+                               postText.includes('lgbtq') || 
+                               postText.includes('queer') || 
+                               postText.includes('pride') ||
+                               postText.includes('lgbt')
+        
+        // Post must have both health content and LGBTQ+ context
+        return hasHealthTopic && hasLGBTQContext
       })
       .map(item => ({
         post: item.post.uri
       }))
 
     console.log(`Filtered down to ${filteredFeed.length} relevant posts`)
+    
+    // Remove duplicates
+    const uniqueFeed = Array.from(new Set(filteredFeed.map(item => item.post)))
+      .map(post => ({ post }))
+    
+    console.log(`Final feed has ${uniqueFeed.length} unique posts`)
+    
     return {
       cursor: timelineResponse.data.cursor,
-      feed: filteredFeed
+      feed: uniqueFeed
     }
   } catch (error) {
     console.error('Error in getFeedPosts:', error)
