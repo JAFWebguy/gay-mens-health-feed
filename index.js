@@ -1,4 +1,5 @@
 const { BskyAgent, RichText } = require('@atproto/api')
+const { Subscription } = require('@atproto/xrpc-server')
 const express = require('express')
 const dotenv = require('dotenv')
 
@@ -56,7 +57,8 @@ function isRelevantPost(text) {
   
   // Health-related terms
   const healthTerms = ['health', 'wellness', 'medical', 'healthcare', 'prep', 'hiv', 
-                      'therapy', 'fitness', 'mental', 'doctor', 'clinic']
+                      'therapy', 'fitness', 'mental', 'doctor', 'clinic', 'medicine',
+                      'treatment', 'prevention', 'screening', 'testing']
   
   // LGBTQ+ terms
   const lgbtqTerms = ['gay', 'lgbtq', 'queer', 'lgbt']
@@ -70,37 +72,64 @@ function isRelevantPost(text) {
 
 // Function to add a post to cache
 function addToCache(post) {
+  if (!post.uri || !post.record?.text) return
+  
+  // Only add if it's relevant
+  if (!isRelevantPost(post.record.text)) return
+  
   if (postCache.size >= MAX_CACHE_SIZE) {
     // Remove oldest posts if cache is full
     const oldestKey = Array.from(postCache.keys())[0]
     postCache.delete(oldestKey)
   }
+  
   postCache.set(post.uri, {
     uri: post.uri,
     indexedAt: post.indexedAt || new Date().toISOString()
   })
 }
 
-async function getFeedPosts(cursor) {
+// Start subscription to firehose
+async function startSubscription() {
   try {
-    // Login to Bluesky
     await agent.login({
       identifier: process.env.BLUESKY_USERNAME,
       password: process.env.BLUESKY_PASSWORD
     })
-
-    // Get timeline posts
-    const response = await agent.getTimeline({ limit: 100 })
     
-    if (response?.data?.feed) {
-      // Process each post
-      response.data.feed.forEach(item => {
-        if (item.post?.record?.text && isRelevantPost(item.post.record.text)) {
-          addToCache(item.post)
-        }
-      })
-    }
+    const sub = new Subscription({
+      service: 'wss://bsky.social',
+      method: 'com.atproto.sync.subscribeRepos'
+    })
 
+    sub.on('message', ({ message }) => {
+      if (message.commit?.ops) {
+        message.commit.ops.forEach(op => {
+          if (op.action === 'create' && op.record?.$type === 'app.bsky.feed.post') {
+            addToCache({
+              uri: op.uri,
+              record: op.record,
+              indexedAt: new Date().toISOString()
+            })
+          }
+        })
+      }
+    })
+
+    await sub.start()
+    console.log('Started firehose subscription')
+  } catch (error) {
+    console.error('Error in subscription:', error)
+    // Try to restart subscription after delay
+    setTimeout(startSubscription, 5000)
+  }
+}
+
+// Start the subscription
+startSubscription()
+
+async function getFeedPosts(cursor) {
+  try {
     // Convert cache to sorted array
     const posts = Array.from(postCache.values())
       .sort((a, b) => new Date(b.indexedAt) - new Date(a.indexedAt))
@@ -137,7 +166,8 @@ app.get('/', (req, res) => {
     environmentStatus: {
       BLUESKY_USERNAME: process.env.BLUESKY_USERNAME ? '(set)' : '(not set)',
       BLUESKY_PASSWORD: process.env.BLUESKY_PASSWORD ? '(set)' : '(not set)',
-    }
+    },
+    cacheSize: postCache.size
   })
 })
 
