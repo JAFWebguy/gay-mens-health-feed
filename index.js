@@ -113,11 +113,11 @@ app.get('/.well-known/did.json', (req, res) => {
   console.log('Serving DID document')
   res.json({
     "@context": ["https://www.w3.org/ns/did/v1"],
-    "id": "did:web:gay-mens-health-feed-bsky.herokuapp.com",
+    "id": "did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com",
     "service": [{
       "id": "#bsky_fg",
       "type": "BskyFeedGenerator",
-      "serviceEndpoint": "https://gay-mens-health-feed-bsky.herokuapp.com"
+      "serviceEndpoint": "https://gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com"
     }]
   })
 })
@@ -140,9 +140,9 @@ app.get('/xrpc/app.bsky.feed.getFeedSkeleton', async (req, res) => {
 app.get('/xrpc/app.bsky.feed.describeFeedGenerator', (req, res) => {
   console.log('Serving feed generator description')
   res.json({
-    did: 'did:web:gay-mens-health-feed-bsky.herokuapp.com',
+    did: 'did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com',
     feeds: [{
-      uri: 'at://did:web:gay-mens-health-feed-bsky.herokuapp.com/app.bsky.feed.generator/gay-mens-health',
+      uri: 'at://did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com/app.bsky.feed.generator/gay-mens-health',
       displayName: "Gay Men's Health",
       description: "A feed focused on gay men's health topics, including physical health, mental wellness, sexual health, and preventive care."
     }]
