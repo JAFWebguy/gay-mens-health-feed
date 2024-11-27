@@ -122,9 +122,26 @@ app.get('/.well-known/did.json', (req, res) => {
   })
 })
 
+// Description endpoint
+app.get('/xrpc/app.bsky.feed.describeFeedGenerator', (req, res) => {
+  console.log('Serving feed generator description')
+  const feedUri = 'at://did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com/app.bsky.feed.generator/gay-mens-health'
+  res.json({
+    did: 'did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com',
+    feeds: [{
+      uri: feedUri,
+      displayName: "Gay Men's Health",
+      description: "A feed focused on gay men's health topics, including physical health, mental wellness, sexual health, and preventive care."
+    }]
+  })
+})
+
 // Feed endpoint
 app.get('/xrpc/app.bsky.feed.getFeedSkeleton', async (req, res) => {
-  console.log('Feed request received with cursor:', req.query.cursor)
+  console.log('Feed request received:', {
+    feed: req.query.feed,
+    cursor: req.query.cursor
+  })
   try {
     const cursor = req.query.cursor
     const feed = await getFeedPosts(cursor)
@@ -134,19 +151,6 @@ app.get('/xrpc/app.bsky.feed.getFeedSkeleton', async (req, res) => {
     console.error('Error in feed endpoint:', error)
     res.status(500).json({ error: 'Failed to fetch feed', details: error.message })
   }
-})
-
-// Description endpoint
-app.get('/xrpc/app.bsky.feed.describeFeedGenerator', (req, res) => {
-  console.log('Serving feed generator description')
-  res.json({
-    did: 'did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com',
-    feeds: [{
-      uri: 'at://did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com/app.bsky.feed.generator/gay-mens-health',
-      displayName: "Gay Men's Health",
-      description: "A feed focused on gay men's health topics, including physical health, mental wellness, sexual health, and preventive care."
-    }]
-  })
 })
 
 // Error handling middleware
