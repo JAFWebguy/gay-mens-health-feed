@@ -45,63 +45,6 @@ const agent = new BskyAgent({
   service: 'https://bsky.social'
 })
 
-// Define health-related keywords and topics
-const healthTopics = [
-  // General Health Terms
-  'mens health',
-  'gay health',
-  'lgbtq health',
-  'queer health',
-  'healthcare',
-  'wellness',
-  
-  // Sexual Health
-  'sexual health',
-  'sti prevention',
-  'std prevention',
-  'prep',
-  'hiv prevention',
-  'hiv',
-  'aids',
-  'sexual wellness',
-  'safe sex',
-  'mpox',
-  'monkeypox',
-  
-  // Mental Health
-  'mental health',
-  'therapy',
-  'counseling',
-  'depression',
-  'anxiety',
-  'mental wellness',
-  'self care',
-  'support group',
-  
-  // Physical Health
-  'fitness',
-  'nutrition',
-  'exercise',
-  'workout',
-  'gym',
-  'physical health',
-  
-  // Preventive Care
-  'preventive care',
-  'screening',
-  'checkup',
-  'vaccination',
-  'prevention',
-  
-  // Healthcare Access
-  'healthcare access',
-  'health insurance',
-  'clinic',
-  'doctor',
-  'physician',
-  'medical'
-]
-
 async function getFeedPosts(cursor) {
   try {
     console.log('Attempting to login to Bluesky with username:', process.env.BLUESKY_USERNAME)
@@ -114,69 +57,82 @@ async function getFeedPosts(cursor) {
     const limit = 100
     console.log('Fetching timeline with cursor:', cursor)
     
-    // Define relevant health-focused accounts
-    const healthAccounts = [
-      'cdc.bsky.social',
-      'who.bsky.social',
-      'health.bsky.social',
-      'healthcare.bsky.social',
-      'wellness.bsky.social',
-      'lgbtq.bsky.social',
-      'pride.bsky.social',
-      'gaymens.bsky.social'
-    ]
-    
     let allPosts = []
     
-    // Get posts from the general timeline
-    const timelineResponse = await agent.getTimeline({ limit, cursor })
-    allPosts = [...timelineResponse.data.feed]
+    // Search for specific terms
+    const searchTerms = [
+      'gay health',
+      'lgbtq health',
+      'prep hiv',
+      'gay mental health',
+      'queer health',
+      'gay wellness',
+      'gay healthcare',
+      'gay fitness',
+      'gay doctor',
+      'gay therapy'
+    ]
     
-    // Get posts from health-focused accounts
-    for (const account of healthAccounts) {
+    // Search for each term
+    for (const term of searchTerms) {
       try {
-        const response = await agent.getAuthorFeed({ actor: account, limit: 30 })
-        if (response.data.feed) {
-          allPosts = [...allPosts, ...response.data.feed]
-        }
-      } catch (error) {
-        console.log(`Could not fetch feed for ${account}:`, error.message)
-      }
-    }
-    
-    // Search for health-related hashtags
-    const healthHashtags = ['health', 'wellness', 'lgbtqhealth', 'gayhealth', 'menshealth', 'prep', 'hivprevention']
-    for (const hashtag of healthHashtags) {
-      try {
-        const response = await agent.searchPosts({ q: '#' + hashtag, limit: 20 })
+        console.log(`Searching for term: ${term}`)
+        const response = await agent.searchPosts({ q: term, limit: 20 })
         if (response.data.posts) {
           allPosts = [...allPosts, ...response.data.posts.map(post => ({ post }))]
         }
       } catch (error) {
-        console.log(`Could not search for hashtag ${hashtag}:`, error.message)
+        console.log(`Could not search for term ${term}:`, error.message)
       }
+      
+      // Add a small delay between searches to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    
+    // Get posts from the general timeline as well
+    try {
+      const timelineResponse = await agent.getTimeline({ limit, cursor })
+      allPosts = [...allPosts, ...timelineResponse.data.feed]
+    } catch (error) {
+      console.log('Could not fetch timeline:', error.message)
     }
     
     console.log(`Retrieved ${allPosts.length} total posts`)
     
-    // Filter posts containing health-related content
+    // Filter posts
     const filteredFeed = allPosts
       .filter(item => {
         if (!item.post?.record?.text) return false
         const postText = item.post.record.text.toLowerCase()
         
-        // Check for health topics
-        const hasHealthTopic = healthTopics.some(topic => postText.includes(topic.toLowerCase()))
+        // Check for LGBTQ+ terms
+        const lgbtqTerms = ['gay', 'lgbtq', 'queer', 'lgbt', 'pride']
+        const hasLGBTQ = lgbtqTerms.some(term => postText.includes(term))
         
-        // Check for LGBTQ+ context
-        const hasLGBTQContext = postText.includes('gay') || 
-                               postText.includes('lgbtq') || 
-                               postText.includes('queer') || 
-                               postText.includes('pride') ||
-                               postText.includes('lgbt')
+        // Check for health terms
+        const healthTerms = ['health', 'wellness', 'medical', 'doctor', 'therapy', 'mental', 
+                           'fitness', 'prep', 'hiv', 'healthcare', 'clinic', 'prevention']
+        const hasHealth = healthTerms.some(term => postText.includes(term))
         
-        // Post must have both health content and LGBTQ+ context
-        return hasHealthTopic && hasLGBTQContext
+        // Accept posts that either:
+        // 1. Have both LGBTQ and health context, OR
+        // 2. Contain specific combined phrases
+        const specificPhrases = [
+          'gay health',
+          'lgbtq health',
+          'queer health',
+          'gay doctor',
+          'gay therapy',
+          'gay mental',
+          'gay medical',
+          'prep hiv',
+          'gay wellness',
+          'gay fitness'
+        ]
+        
+        const hasSpecificPhrase = specificPhrases.some(phrase => postText.includes(phrase))
+        
+        return hasSpecificPhrase || (hasLGBTQ && hasHealth)
       })
       .map(item => ({
         post: item.post.uri
@@ -185,14 +141,17 @@ async function getFeedPosts(cursor) {
     console.log(`Filtered down to ${filteredFeed.length} relevant posts`)
     
     // Remove duplicates
-    const uniqueFeed = Array.from(new Set(filteredFeed.map(item => item.post)))
-      .map(post => ({ post }))
+    const uniquePosts = new Map()
+    for (const item of filteredFeed) {
+      uniquePosts.set(item.post, item)
+    }
+    const uniqueFeed = Array.from(uniquePosts.values())
     
     console.log(`Final feed has ${uniqueFeed.length} unique posts`)
     
     return {
-      cursor: timelineResponse.data.cursor,
-      feed: uniqueFeed
+      cursor: cursor,
+      feed: uniqueFeed.slice(0, 50) // Limit to 50 posts max
     }
   } catch (error) {
     console.error('Error in getFeedPosts:', error)
