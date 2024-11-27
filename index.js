@@ -69,16 +69,50 @@ async function getFeedPosts(cursor) {
     })
     console.log('Successfully logged in to Bluesky')
 
-    const limit = 30
+    const limit = 100  // Increased limit to get more posts
     console.log('Fetching timeline with cursor:', cursor)
-    const response = await agent.getTimeline({ limit, cursor })
-    console.log(`Retrieved ${response.data.feed.length} posts from timeline`)
+    
+    // Use getAuthorFeed to get posts from specific health-focused accounts
+    const healthAccounts = [
+      'cdc.bsky.social',
+      'who.bsky.social',
+      'health.bsky.social',
+      'healthcare.bsky.social',
+      'wellness.bsky.social'
+    ]
+    
+    let allPosts = []
+    
+    // First get posts from the general timeline
+    const timelineResponse = await agent.getTimeline({ limit, cursor })
+    allPosts = [...timelineResponse.data.feed]
+    
+    // Then try to get posts from health-focused accounts
+    for (const account of healthAccounts) {
+      try {
+        const response = await agent.getAuthorFeed({ actor: account, limit: 20 })
+        if (response.data.feed) {
+          allPosts = [...allPosts, ...response.data.feed]
+        }
+      } catch (error) {
+        console.log(`Could not fetch feed for ${account}:`, error.message)
+      }
+    }
+    
+    console.log(`Retrieved ${allPosts.length} total posts`)
     
     // Filter posts containing health-related content
-    const filteredFeed = response.data.feed
+    const filteredFeed = allPosts
       .filter(item => {
         const postText = item.post.record.text.toLowerCase()
-        return healthTopics.some(topic => postText.includes(topic.toLowerCase()))
+        return healthTopics.some(topic => postText.includes(topic.toLowerCase())) ||
+               postText.includes('health') ||
+               postText.includes('wellness') ||
+               postText.includes('medical') ||
+               postText.includes('doctor') ||
+               postText.includes('therapy') ||
+               postText.includes('mental') ||
+               postText.includes('fitness')
       })
       .map(item => ({
         post: item.post.uri
@@ -86,7 +120,7 @@ async function getFeedPosts(cursor) {
 
     console.log(`Filtered down to ${filteredFeed.length} relevant posts`)
     return {
-      cursor: response.data.cursor,
+      cursor: timelineResponse.data.cursor,
       feed: filteredFeed
     }
   } catch (error) {
