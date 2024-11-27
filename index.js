@@ -2,10 +2,28 @@ const { BskyAgent } = require('@atproto/api')
 const express = require('express')
 const dotenv = require('dotenv')
 
+// Load environment variables from .env file if present
 dotenv.config()
 
 const app = express()
 const port = process.env.PORT || 3000
+
+// Print all environment variables (excluding sensitive data)
+console.log('Available environment variables:', {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  BLUESKY_USERNAME: process.env.BLUESKY_USERNAME ? '(set)' : '(not set)',
+  BLUESKY_PASSWORD: process.env.BLUESKY_PASSWORD ? '(set)' : '(not set)',
+})
+
+// Validate required environment variables
+if (!process.env.BLUESKY_USERNAME || !process.env.BLUESKY_PASSWORD) {
+  console.error('ERROR: Missing required environment variables:',
+    !process.env.BLUESKY_USERNAME ? 'BLUESKY_USERNAME' : '',
+    !process.env.BLUESKY_PASSWORD ? 'BLUESKY_PASSWORD' : ''
+  )
+  process.exit(1)
+}
 
 // Enable CORS
 app.use((req, res, next) => {
@@ -42,7 +60,7 @@ const healthTopics = [
 
 async function getFeedPosts(cursor) {
   try {
-    console.log('Attempting to login to Bluesky...')
+    console.log('Attempting to login to Bluesky with username:', process.env.BLUESKY_USERNAME)
     await agent.login({
       identifier: process.env.BLUESKY_USERNAME,
       password: process.env.BLUESKY_PASSWORD
@@ -74,6 +92,18 @@ async function getFeedPosts(cursor) {
     throw error
   }
 }
+
+// Basic health check endpoint
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Gay Men\'s Health Feed Generator is running',
+    environmentStatus: {
+      BLUESKY_USERNAME: process.env.BLUESKY_USERNAME ? '(set)' : '(not set)',
+      BLUESKY_PASSWORD: process.env.BLUESKY_PASSWORD ? '(set)' : '(not set)',
+    }
+  })
+})
 
 // Well-known DID endpoint
 app.get('/.well-known/did.json', (req, res) => {
@@ -124,8 +154,4 @@ app.use((err, req, res, next) => {
 
 app.listen(port, () => {
   console.log(`Gay men's health feed server running on port ${port}`)
-  console.log('Environment variables loaded:', {
-    BLUESKY_USERNAME: process.env.BLUESKY_USERNAME ? 'Set' : 'Not set',
-    PORT: process.env.PORT || 3000
-  })
 })
