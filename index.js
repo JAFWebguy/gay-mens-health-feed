@@ -47,111 +47,89 @@ const agent = new BskyAgent({
 
 async function getFeedPosts(cursor) {
   try {
-    console.log('Attempting to login to Bluesky with username:', process.env.BLUESKY_USERNAME)
+    console.log('Starting getFeedPosts with cursor:', cursor)
+    
+    // Login to Bluesky
+    console.log('Attempting to login to Bluesky...')
     await agent.login({
       identifier: process.env.BLUESKY_USERNAME,
       password: process.env.BLUESKY_PASSWORD
     })
     console.log('Successfully logged in to Bluesky')
 
-    const limit = 100
-    console.log('Fetching timeline with cursor:', cursor)
-    
     let allPosts = []
     
-    // Search for specific terms
+    // Search terms to try
     const searchTerms = [
       'gay health',
       'lgbtq health',
       'prep hiv',
-      'gay mental health',
-      'queer health',
       'gay wellness',
-      'gay healthcare',
-      'gay fitness',
-      'gay doctor',
-      'gay therapy'
+      'queer health',
+      'gay mental health'
     ]
-    
-    // Search for each term
+
+    // Try each search term
     for (const term of searchTerms) {
       try {
-        console.log(`Searching for term: ${term}`)
-        const response = await agent.searchPosts({ q: term, limit: 20 })
-        if (response.data.posts) {
-          allPosts = [...allPosts, ...response.data.posts.map(post => ({ post }))]
+        console.log(`Searching for term: "${term}"`)
+        const response = await agent.searchPosts({
+          q: term,
+          limit: 30
+        })
+        
+        if (response?.data?.posts) {
+          console.log(`Found ${response.data.posts.length} posts for term "${term}"`)
+          allPosts = [...allPosts, ...response.data.posts]
         }
       } catch (error) {
-        console.log(`Could not search for term ${term}:`, error.message)
+        console.error(`Error searching for term "${term}":`, error.message)
       }
       
-      // Add a small delay between searches to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 100))
+      // Small delay between searches
+      await new Promise(resolve => setTimeout(resolve, 500))
     }
     
-    // Get posts from the general timeline as well
+    console.log(`Total posts gathered from searches: ${allPosts.length}`)
+
+    // Get some posts from the timeline as well
     try {
-      const timelineResponse = await agent.getTimeline({ limit, cursor })
-      allPosts = [...allPosts, ...timelineResponse.data.feed]
+      const timelineResponse = await agent.getTimeline({ limit: 50 })
+      if (timelineResponse?.data?.feed) {
+        console.log(`Got ${timelineResponse.data.feed.length} posts from timeline`)
+        allPosts = [...allPosts, ...timelineResponse.data.feed.map(item => item.post)]
+      }
     } catch (error) {
-      console.log('Could not fetch timeline:', error.message)
+      console.error('Error fetching timeline:', error.message)
+    }
+
+    console.log(`Total posts after adding timeline: ${allPosts.length}`)
+
+    // Remove duplicates first
+    const uniquePosts = new Map()
+    for (const post of allPosts) {
+      if (post?.uri) {
+        uniquePosts.set(post.uri, post)
+      }
     }
     
-    console.log(`Retrieved ${allPosts.length} total posts`)
-    
-    // Filter posts
-    const filteredFeed = allPosts
-      .filter(item => {
-        if (!item.post?.record?.text) return false
-        const postText = item.post.record.text.toLowerCase()
-        
-        // Check for LGBTQ+ terms
-        const lgbtqTerms = ['gay', 'lgbtq', 'queer', 'lgbt', 'pride']
-        const hasLGBTQ = lgbtqTerms.some(term => postText.includes(term))
-        
-        // Check for health terms
-        const healthTerms = ['health', 'wellness', 'medical', 'doctor', 'therapy', 'mental', 
-                           'fitness', 'prep', 'hiv', 'healthcare', 'clinic', 'prevention']
-        const hasHealth = healthTerms.some(term => postText.includes(term))
-        
-        // Accept posts that either:
-        // 1. Have both LGBTQ and health context, OR
-        // 2. Contain specific combined phrases
-        const specificPhrases = [
-          'gay health',
-          'lgbtq health',
-          'queer health',
-          'gay doctor',
-          'gay therapy',
-          'gay mental',
-          'gay medical',
-          'prep hiv',
-          'gay wellness',
-          'gay fitness'
-        ]
-        
-        const hasSpecificPhrase = specificPhrases.some(phrase => postText.includes(phrase))
-        
-        return hasSpecificPhrase || (hasLGBTQ && hasHealth)
-      })
-      .map(item => ({
-        post: item.post.uri
+    console.log(`Number of unique posts: ${uniquePosts.size}`)
+
+    // Convert posts to feed format
+    const feedPosts = Array.from(uniquePosts.values())
+      .map(post => ({
+        post: post.uri
       }))
 
-    console.log(`Filtered down to ${filteredFeed.length} relevant posts`)
-    
-    // Remove duplicates
-    const uniquePosts = new Map()
-    for (const item of filteredFeed) {
-      uniquePosts.set(item.post, item)
-    }
-    const uniqueFeed = Array.from(uniquePosts.values())
-    
-    console.log(`Final feed has ${uniqueFeed.length} unique posts`)
-    
+    console.log(`Final number of feed posts: ${feedPosts.length}`)
+
+    // Log some sample posts for debugging
+    const samplePosts = feedPosts.slice(0, 3)
+    console.log('Sample posts:', JSON.stringify(samplePosts, null, 2))
+
     return {
-      cursor: cursor,
-      feed: uniqueFeed.slice(0, 50) // Limit to 50 posts max
+      cursor: cursor || new Date().toISOString(),
+      feed: feedPosts
     }
   } catch (error) {
     console.error('Error in getFeedPosts:', error)
@@ -195,10 +173,10 @@ app.get('/xrpc/app.bsky.feed.getFeedSkeleton', async (req, res) => {
     feed: req.query.feed,
     cursor: req.query.cursor
   })
+  
   try {
-    const cursor = req.query.cursor
-    const feed = await getFeedPosts(cursor)
-    console.log('Successfully generated feed response')
+    const feed = await getFeedPosts(req.query.cursor)
+    console.log('Successfully generated feed response with', feed.feed.length, 'posts')
     res.json(feed)
   } catch (error) {
     console.error('Error in feed endpoint:', error)
