@@ -59,14 +59,34 @@ async function getFeedPosts(cursor) {
 
     let allPosts = []
     
-    // Search terms to try
+    // Search terms to try, ordered by priority
     const searchTerms = [
+      // Primary health terms
       'gay health',
       'lgbtq health',
-      'prep hiv',
-      'gay wellness',
       'queer health',
-      'gay mental health'
+      'gay mental health',
+      
+      // Sexual health
+      'prep hiv',
+      'sexual health gay',
+      'sti prevention',
+      'hiv prevention',
+      
+      // Mental health
+      'gay therapy',
+      'lgbtq counseling',
+      'queer mental health',
+      
+      // Physical health
+      'gay fitness',
+      'gay wellness',
+      'gay nutrition',
+      
+      // Healthcare access
+      'lgbtq healthcare',
+      'gay doctor',
+      'queer medical'
     ]
 
     // Try each search term
@@ -75,12 +95,19 @@ async function getFeedPosts(cursor) {
         console.log(`Searching for term: "${term}"`)
         const response = await agent.searchPosts({
           q: term,
-          limit: 30
+          limit: 25
         })
         
         if (response?.data?.posts) {
-          console.log(`Found ${response.data.posts.length} posts for term "${term}"`)
-          allPosts = [...allPosts, ...response.data.posts]
+          // Filter out retweets and ensure post has text
+          const validPosts = response.data.posts.filter(post => 
+            post?.record?.text && 
+            !post.record.text.startsWith('RT ') &&
+            !post.record.text.startsWith('rt ')
+          )
+          
+          console.log(`Found ${validPosts.length} valid posts for term "${term}"`)
+          allPosts = [...allPosts, ...validPosts]
         }
       } catch (error) {
         console.error(`Error searching for term "${term}":`, error.message)
@@ -96,8 +123,25 @@ async function getFeedPosts(cursor) {
     try {
       const timelineResponse = await agent.getTimeline({ limit: 50 })
       if (timelineResponse?.data?.feed) {
-        console.log(`Got ${timelineResponse.data.feed.length} posts from timeline`)
-        allPosts = [...allPosts, ...timelineResponse.data.feed.map(item => item.post)]
+        const timelinePosts = timelineResponse.data.feed
+          .filter(item => {
+            const text = item.post?.record?.text?.toLowerCase() || ''
+            return (
+              text.includes('health') || 
+              text.includes('wellness') || 
+              text.includes('medical') || 
+              text.includes('prep') || 
+              text.includes('hiv')
+            ) && (
+              text.includes('gay') || 
+              text.includes('lgbtq') || 
+              text.includes('queer')
+            )
+          })
+          .map(item => item.post)
+        
+        console.log(`Got ${timelinePosts.length} relevant posts from timeline`)
+        allPosts = [...allPosts, ...timelinePosts]
       }
     } catch (error) {
       console.error('Error fetching timeline:', error.message)
@@ -105,21 +149,23 @@ async function getFeedPosts(cursor) {
 
     console.log(`Total posts after adding timeline: ${allPosts.length}`)
 
-    // Remove duplicates first
+    // Remove duplicates and sort by recency
     const uniquePosts = new Map()
     for (const post of allPosts) {
-      if (post?.uri) {
-        uniquePosts.set(post.uri, post)
+      if (post?.uri && post?.indexedAt) {
+        uniquePosts.set(post.uri, {
+          post: post.uri,
+          indexedAt: post.indexedAt
+        })
       }
     }
     
     console.log(`Number of unique posts: ${uniquePosts.size}`)
 
-    // Convert posts to feed format
+    // Convert to array and sort by indexedAt
     const feedPosts = Array.from(uniquePosts.values())
-      .map(post => ({
-        post: post.uri
-      }))
+      .sort((a, b) => new Date(b.indexedAt) - new Date(a.indexedAt))
+      .map(({ post }) => ({ post }))
 
     console.log(`Final number of feed posts: ${feedPosts.length}`)
 
