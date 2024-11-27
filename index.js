@@ -1,4 +1,4 @@
-const { BskyAgent } = require('@atproto/api')
+const { BskyAgent, RichText } = require('@atproto/api')
 const express = require('express')
 const dotenv = require('dotenv')
 
@@ -114,24 +114,13 @@ app.get('/.well-known/did.json', (req, res) => {
   res.json({
     "@context": ["https://www.w3.org/ns/did/v1"],
     "id": "did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com",
+    "alsoKnownAs": [],
+    "authentication": [],
+    "verificationMethod": [],
     "service": [{
       "id": "#bsky_fg",
       "type": "BskyFeedGenerator",
       "serviceEndpoint": "https://gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com"
-    }]
-  })
-})
-
-// Description endpoint
-app.get('/xrpc/app.bsky.feed.describeFeedGenerator', (req, res) => {
-  console.log('Serving feed generator description')
-  const feedUri = 'at://did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com/app.bsky.feed.generator/gay-mens-health'
-  res.json({
-    did: 'did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com',
-    feeds: [{
-      uri: feedUri,
-      displayName: "Gay Men's Health",
-      description: "A feed focused on gay men's health topics, including physical health, mental wellness, sexual health, and preventive care."
     }]
   })
 })
@@ -151,6 +140,20 @@ app.get('/xrpc/app.bsky.feed.getFeedSkeleton', async (req, res) => {
     console.error('Error in feed endpoint:', error)
     res.status(500).json({ error: 'Failed to fetch feed', details: error.message })
   }
+})
+
+// Description endpoint
+app.get('/xrpc/app.bsky.feed.describeFeedGenerator', (req, res) => {
+  console.log('Serving feed generator description')
+  res.json({
+    did: 'did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com',
+    feeds: [{
+      uri: 'at://did:web:gay-mens-health-feed-bsky-818b50b09c03.herokuapp.com/app.bsky.feed.generator/gay-mens-health',
+      displayName: "Gay Men's Health",
+      description: "A feed focused on gay men's health topics, including physical health, mental wellness, sexual health, and preventive care.",
+      createdAt: new Date().toISOString()
+    }]
+  })
 })
 
 // Error handling middleware
