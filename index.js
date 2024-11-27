@@ -34,18 +34,22 @@ async function getFeedPosts(cursor) {
       password: process.env.BLUESKY_PASSWORD
     })
 
-    // Algorithm to fetch and filter relevant posts
-    // Implementation would include:
-    // 1. Fetching recent posts
-    // 2. Filtering for health-related content
-    // 3. Checking for credible sources
-    // 4. Prioritizing posts from health professionals and organizations
+    const limit = 30
+    const response = await agent.getTimeline({ limit, cursor })
     
+    // Filter posts containing health-related content
+    const filteredFeed = response.data.feed
+      .filter(item => {
+        const postText = item.post.record.text.toLowerCase()
+        return healthTopics.some(topic => postText.includes(topic.toLowerCase()))
+      })
+      .map(item => ({
+        post: item.post.uri
+      }))
+
     return {
-      cursor: 'example-cursor',
-      feed: [
-        // Feed items would go here
-      ]
+      cursor: response.data.cursor,
+      feed: filteredFeed
     }
   } catch (error) {
     console.error('Error fetching feed:', error)
@@ -62,6 +66,16 @@ app.get('/', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch feed' })
   }
+})
+
+// Add description endpoint
+app.get('/description', (req, res) => {
+  res.json({
+    did: 'did:web:gay-mens-health-feed-bsky.herokuapp.com',
+    displayName: "Gay Men's Health",
+    description: "A feed focused on gay men's health topics, including physical health, mental wellness, sexual health, and preventive care.",
+    avatar: 'https://example.com/avatar.jpg'
+  })
 })
 
 app.listen(port, () => {
